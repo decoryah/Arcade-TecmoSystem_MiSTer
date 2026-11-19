@@ -1,0 +1,60 @@
+set_global_assignment -name SDC_FILE TecmoSys.sdc
+# Tecmo System core file list. `source`d by TecmoSys.qsf, so paths are plain and relative to the project directory (mister/).
+# Only real .qip files (loaded via QIP_FILE) may use $::quartus(qip_path).  Keep in step with sim/files.sh.
+
+set_global_assignment -name SYSTEMVERILOG_FILE TecmoSys.sv
+set_global_assignment -name QIP_FILE rtl/pll.qip
+
+# the machine (the SDC's multicycle paths rely on ts_cen's phase enables, see TecmoSys.sdc)
+set_global_assignment -name SEARCH_PATH rtl
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ts_ram.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ts_cen.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ts_m68k.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ts_eeprom.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ts_prot.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ts_main.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ts_tiles.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ts_sprites.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ts_video.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ts_opl3.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ts_ymz280b.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ts_sound.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ts_audio48.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ts_core.sv
+
+# memory system: the SDRAM controller (the owner's jchan-mister), the client adapters, the loader, the fast load
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ts_sdram.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ts_mem.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ts_fastload.sv
+
+# MiSTer glue: the blank raster shown while the machine is held (the OSD's "Loading" pop-up needs a sync)
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/ts_standby.sv
+
+# CRT Adjust (rmonic79's MiSTer-CRT-Adjust, GPL-3.0 or later; modules/VENDOR.md)
+set_global_assignment -name SYSTEMVERILOG_FILE modules/crt_adjust/crt_adjust.sv
+
+# fx68k 68000 (GPL-3, Jorge Cwik); microrom.mem / nanorom.mem are read from the project directory
+set_global_assignment -name SYSTEMVERILOG_FILE modules/cpu-fx68k/fx68kAlu.sv
+set_global_assignment -name SYSTEMVERILOG_FILE modules/cpu-fx68k/uaddrPla.sv
+set_global_assignment -name SYSTEMVERILOG_FILE modules/cpu-fx68k/fx68k.sv
+
+# TV80 Z80 (Guy Hutchison; tv80s_cen: the clock enable as a port)
+set_global_assignment -name VERILOG_FILE modules/cpu-tv80/tv80_alu.v
+set_global_assignment -name VERILOG_FILE modules/cpu-tv80/tv80_core.v
+set_global_assignment -name VERILOG_FILE modules/cpu-tv80/tv80_mcode.v
+set_global_assignment -name VERILOG_FILE modules/cpu-tv80/tv80_reg.v
+set_global_assignment -name VERILOG_FILE modules/cpu-tv80/tv80s_cen.v
+
+# jt6295 (OKI M6295, GPL-3.0, Jose Tejada), INTERPOL = 0
+set_global_assignment -name VERILOG_FILE modules/jt6295/hdl/jt6295.v
+set_global_assignment -name VERILOG_FILE modules/jt6295/hdl/jt6295_adpcm.v
+set_global_assignment -name VERILOG_FILE modules/jt6295/hdl/jt6295_timing.v
+set_global_assignment -name VERILOG_FILE modules/jt6295/hdl/jt6295_acc.v
+set_global_assignment -name VERILOG_FILE modules/jt6295/hdl/jt6295_ctrl.v
+set_global_assignment -name VERILOG_FILE modules/jt6295/hdl/jt6295_rom.v
+set_global_assignment -name VERILOG_FILE modules/jt6295/hdl/jt6295_serial.v
+set_global_assignment -name VERILOG_FILE modules/jt6295/hdl/jt6295_sh_rst.v
+set_global_assignment -name SEARCH_PATH modules/jt6295/hdl
+
+# YMF262 (opl3_fpga, LGPL-3.0, Greg Taylor; MiSTer ao486's copy with this core's changes, modules/VENDOR.md)
+set_global_assignment -name QIP_FILE modules/opl3/opl3.qip
