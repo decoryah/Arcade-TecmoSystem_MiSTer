@@ -48,8 +48,8 @@ set_global_assignment -name ECO_OPTIMIZE_TIMING ON
 set_global_assignment -name PERIPHERY_TO_CORE_PLACEMENT_AND_ROUTING_OPTIMIZATION ON
 set_global_assignment -name PHYSICAL_SYNTHESIS_ASYNCHRONOUS_SIGNAL_PIPELINING ON
 set_global_assignment -name ALM_REGISTER_PACKING_EFFORT MEDIUM
-# seed: the first fit
-set_global_assignment -name SEED 1
+# seed 3 (test build 20261121c): seeds 1 and 2 missed timing by 0.02 and 0.12 ns (docs/status.md, "Build")
+set_global_assignment -name SEED 3
 
 
 

@@ -1,6 +1,6 @@
 # Status
 
-## In short (2026-11-18)
+## In short (2026-11-21)
 
 The whole core is written: MiSTer top, 68000 board, video (tilemaps, zooming sprites, mixer), sound board (Z80, YMF262, YMZ280B, OKI),
 memory system, MRAs, tools and benches.  Verified so far:
@@ -16,19 +16,32 @@ memory system, MRAs, tools and benches.  Verified so far:
 | Whole machine | `sim/run.sh`: both CPUs from reset through the SDRAM controller and model, blank 93C46, vs MAME's same frames | boots as MAME (watchdog reset, EEPROM initialisation); every checked picture pixel-identical at the same frame number up to tkdensho's attract (frame 1200: its first sprite scene) and deroon's frame 901; deroon one frame behind at 950 (a 20 us race of the YMF262's timer start against MAME's, not wait states); no late line, no SDRAM timing violation; see "Whole machine" below |
 | Sound | the Z80's writes to the three chips, MAME vs RTL (`tools/cmp_sndlog.py`); each chip's gain fitted to MAME's recording (`tools/fit_mix.py`); the output against MAME's (`tools/cmp_audio.py`) | 2,689 writes in MAME's order (found and fixed the YMF262's timer-acknowledge bug); first sound within 20 ms of MAME's; the YMF262 was at half MAME's scale (fixed): deroon's 15 s of attract music now **+0.1 dB from MAME's level, envelope correlation 0.992**; then (20261118c) back to the chip's scale, the driver's balance before MAME's 0.225 bug (MAME flaw 11); the OKI's ADPCM bytes all in time (they were not: crackle), checked against MAME's decode |
 | MiSTer top + loader | `sim/run_emu.sh`: the real `TecmoSys.sv` with framework stand-ins, the MRA stream played as the HPS does, `+FAST=1` as Main_MiSTer's DDR3 fast load | the SDRAM byte-exact against `ts_rom.py`'s image: deroon 20,971,520 bytes streamed and fast-loaded, tkdensho 41,943,040 bytes fast-loaded; the header decoded |
+| Video Timing (RT4K DV1) | `sim/run_raster.sh`: the Original raster against the first release's modules; both rasters' shapes and the switch; the frozen-state bench with `--rt4k`; the whole machine on the 264-line frame | the Original clock-identical to 20261118 (5,018,504 clocks); the RT4K raster as designed; 18 / 18 frozen frames and every whole-machine picture as with the Original; on the owner's RetroTINK 4K "MiSTer (240p)" and the whole picture, a CRT in sync on the same signal ("The RetroTINK 4K") |
 | Build | `quartus_sh --flow compile TecmoSys` | fits (49 % ALMs, 59 % RAM blocks); timing met in all four models; see "Build" below |
 
 Not yet: the one-frame drift of deroon's attract (below), long play with inputs.  On hardware: the owner has tested every test build
-from 20261117 to 20261118c (released as 20261118); both games run, and 20261118c's sound is "much better", the coin sound clean (below, "Controls and the
-hardware tests").  MAME's flaws: the screen flip is fixed; the rest are checked or wait for evidence
+from 20261117 to 20261118c (released as 20261118); both games run, and 20261118c's sound is "much better", the coin sound clean; and
+20261121 to 20261121d on a RetroTINK 4K and a CRT, 20261121d released as the second release (below, "Controls and the hardware tests").  MAME's flaws: the screen flip is fixed; the rest are checked or wait for evidence
 from a real board (table below).
 
 ## Design decisions (and what is assumed)
 
-- **Raster**: 7 MHz dots (28 MHz / 4), 448 x 272: a 15.625 kHz line and 57.4449 Hz, which is MAME's 57.4458 Hz to 0.002 % (MAME's own
-  raster is a placeholder 512 x 512).  The board's real totals and sync positions are not documented; hsync dots 344-375, vsync lines
-  248-250 are this core's choice.  The vertical blank (lines 240-271) is 32 lines here against MAME's 272 of 512: 880000 bit 0 (1 outside
-  the blank) and the time the 68000 has between the interrupt and the picture differ from MAME accordingly.
+- **Raster**: two, chosen by the OSD's **Video Timing** (`rtl/ts_cen.sv`, `ts_pixgen`; taken at the start of a frame).  MAME's own raster
+  is a placeholder 512 x 512 at 57.4458 Hz; the board's real totals and sync positions are not documented, so the sync positions are
+  this core's choice in both.
+  - **Original** (the default; the first release's raster, clock for clock): the board's 7 MHz dots (28 MHz / 4) on 13-clock steps (the
+    dots 7.38 MHz apart, a 320-clock gap before the first), 448 x 272: a 15.625 kHz line and 57.4449 Hz, MAME's rate to 0.002 %.  Hsync
+    dots 344-375, vsync lines 248-250; the picture is 43.3 us of the 64 us line (67.7 %), 17.4 us after the hsync's rise.  The vertical
+    blank (lines 240-271) is 32 lines (2.05 ms).
+  - **RT4K DV1**, for a RetroTINK 4K on MiSTer's direct video ("The RetroTINK 4K" below): 16-clock dots (6 MHz), 395 x 264 with a
+    10-clock gap: a 15.166 kHz line (6,330 clocks) and 57.4465 Hz, MAME's rate to 0.001 %.  Hsync dots 342-369 (28 dots, 4.7 us; 4
+    dots in 20261121c), the picture (53.3 us, 80.9 % of the line) centred between the hsyncs as direct video's DE sees it; vsync lines
+    244-246.  The vertical
+    blank (lines 240-263) is 24 lines (1.58 ms).  CRT Adjust is held off and greyed out (it is set up for the Original raster).
+
+  Against MAME's 272 of 512 lines (9.25 ms; MAME draws the picture 3 ms after the interrupt) both blanks are short: 880000 bit 0 (1
+  outside the blank) and the time the 68000 has between the interrupt and the picture differ from MAME accordingly ("The RetroTINK 4K"
+  says what the RT4K raster's shorter blank costs).
 - **Sprites**: drawn line by line from a copy of the selected list taken at the start of the vertical blank, one frame behind the tilemaps as
   MAME draws them.  MAME's source-driven drawing is reproduced exactly (including the gaps of zoom > 1).  The cost of a line is one scan
   of the 1024 entries (1 a clock) plus the pixels; a strongly shrunk sprite costs all its source rows and columns (as MAME's loop).
@@ -58,7 +71,7 @@ a board owner, the games' own code) before the core departs from MAME; until the
 | 5 | Sprite zoom: source-driven, so a zoom above 1.0 leaves empty rows / columns (seen in the stress frames), and below 1.0 several source rows / columns land on one line / pixel (the last opaque one wins) | as described | **Checked what the games use** (`tkdensho` play, 9 frames): no magnification at all; the only zoom is X 1.0 / Y 0.25 (0x100 / 0x040, 99 sprites: the fighters' squashed shadows), so the gaps never show.  The open point is the shrink: a real zoom unit most likely samples one source row per line (which of the four?) where MAME composites all four.  Needs a PCB capture of a shadow; until then MAME's |
 | 6 | Sprites one frame behind the tilemaps ("which is correct?") | one frame behind | the board's sprite DRAM frame buffers (2 x 424260) make a one-frame delay natural; keep |
 | 7 | 880000 registers other than 00 / 02 / 08 / 22 ("unknowns of sprite / tilemap registers") | ignored | **logged** (`wrlog.lua`, same runs): written once at boot, identically by both games: 880004 = 01f0, 88000a = 0f40, 88000c-880020 = 0, 880024 = 6969 (deroon, byte) / 0069 (tkdensho), deroon later 880024 = 0; the four flip words stay 0 except c00004 = 0010 (MAME: "bit 4 of c00004 is unknown").  Constants (CRTC-like set-up): they change nothing the games show; worth a look only if a PCB capture disagrees with the raster |
-| 8 | Raster: placeholder 512 x 512 | — | this core: 448 x 272 at 7 MHz (above); a PCB measurement would settle it |
+| 8 | Raster: placeholder 512 x 512 | — | this core: 462 x 264 at 7 MHz (above; 448 x 272 until 2026-11-21); a PCB measurement would settle it |
 | 9 | Protection MCU not dumped | simulated | nothing to do unless it is dumped |
 | 10 | Watchdog period (400 vertical blanks, "guess") decides the first boot | the cold boot (deroon 0x0bf0-0x0c42; tkdensho has the same handshake at 0x3382) writes "Power on reset" to work RAM 200000, writes 0 to 880025 and spins in `nop; bra` at 0x0c40 waiting to be reset; MAME's watchdog resets it after 400 frames (6.96 s), the warm boot finds the string and goes on (MAME: "Z80 INITIALIZ" at frame ~450) | **880025 is not a reset trigger**: deroon writes 69 then 00 to it on both paths (0x0430, 0x044c; 0x0c38 on the cold one) and the warm boot keeps running after its 00 -- the board resets the cold boot with a watchdog of unknown period.  Needs a power-on video of a board (time from power to the first text).  The core keeps MAME's 400 frames (the reset is held 2048 clocks: the 68000 needs a long one) |
 | 11 | The FM 6 dB too loud against the YMZ280B and the OKI (found 2026-11-18, after the owner heard Angel Eyes' voices and effects "buried under music" against MAME videos) | left = 1.0 x the FM's A sum + 0.25 x the OKI + 0.30 x the YMZ280B (ymfm's YMF262 at 0.50 with its 2x scale) | **FIXED** (20261118c) from MAME's own history (sources of each release, `work/oldmame/`): 0.140-0.224 route the FM at 1.00, the OKI at 0.50, the YMZ280B at 0.30 (`ymz280b.cpp` without the `/ 2`).  0.225's stream conversion of `ymf262.cpp` wrote output A to all four outputs (`ch_a..ch_d.put_int_clamp(i, a, ...)`), and these games pan to A and B only (0x30), so left = A + "C" = 2 A.  In December 2020 R. Belmont halved the YMZ280B ("ymz280b: Fix major mixer overdriving", d0cf574b51) and David Haywood halved this driver's FM and OKI routes to keep the balance ("rebalance sound after ymz280b change", e28a67d352): everything was meant to drop 6 dB, but the FM was doubled by then and stayed at its old level.  ymfm (0.231 on) is exactly twice the old core's scale, so the doubling stayed.  The core mixes the FM at the old scale with 0.227's gains (the ratios of 0.224, the ones the rebalance meant to keep), times 1.5 to keep 20261118b's loudness; MAME 0.224's own level would be 2.  The analogue mix of a real board is unmeasured |
@@ -98,6 +111,14 @@ a board owner, the games' own code) before the core departs from MAME; until the
   at 1370 with 2P Start at 1371, both Starts at 1400.  Pictures 1312 / 1360 / 1390 (still the I/O check) and 1430 (back in the main
   menu) **pixel-identical to MAME's same frames** with the same holds; no late line, no SDRAM timing violation over 1,432 frames.  (The
   bench drives `ts_core`'s ports, not the pad bits: the three lines of `TecmoSys.sv` that turn bit 10 into both Starts are not in it.)
+
+- The RT4K DV1 timing's frame (2026-11-21; run on test build 20261121's 264-line raster, which has its 264 lines of 6,330 clocks and its
+  1.58 ms blank, the first dot 3 us later in the line): the same three runs as above, from reset.  deroon 449-900 and tkdensho 449-1200
+  pixel-identical to MAME's same frames; deroon 949 / 950 one frame behind exactly as with the Original raster (picture 951 = MAME's
+  950: the YMF262 timer race above); Angel Eyes' I/O-check exit 1312 / 1360 / 1390 / 1430 pixel-identical (1430 against the MAME run
+  with the same holds, `states/tkd_exit3` / `tkd_exit5`, as the Original raster's run).  No late line (tiles <= 1,515, sprites
+  <= 1,026 of 6,330 clocks), no SDRAM timing violation.  The Original raster is the release's, clock for clock (`sim/run_raster.sh`),
+  so the runs above stand for it.
 
 (More as the runs complete.)
 
@@ -205,17 +226,152 @@ a board owner, the games' own code) before the core departs from MAME; until the
   coin sound crackly, more background noise than the owner's other cores, Angel Eyes' voices and effects under the music: three causes,
   fixed in 20261118c ("Sound").
 - Fourth hardware test (the owner, 2026-11-19, test build 20261118c, released as 20261118): the sound "much better now", Deroon's coin sound clean.
+- Fifth hardware test (the owner, 2026-11-21, release 20261118, a RetroTINK 4K on MiSTer's direct video, DV1): the RT4K named the
+  signal **"MiSTer Gen."** where "MiSTer (240p)" is wanted, the class the owner's other cores get (in "Gen." the RT4K forces square
+  pixels, and squashes the picture while the MiSTer OSD is open).
+- Sixth hardware test (the owner, 2026-11-21, test build 20261121: the one raster changed to 462 x 264, the same 13-clock dots, the line
+  3 % longer to keep MAME's frame rate): the RT4K says **"MiSTer (240p)"**; but the **CRT picture came out narrower** (the same picture
+  in a longer line: 65.7 % of it instead of 67.7 %), which is not wanted, and the RT4K **cuts the right side of the picture** -- in this
+  build and in the release, in "Gen." and in "240p" alike, while the CRT shows it whole.  The owner asked for an OSD Video Timing as
+  the Polygonet core's: the Original raster and an RT4K DV1 one.  Test build 20261121b (below, "The RetroTINK 4K").
+- Seventh hardware test (the owner, 2026-11-21, test build 20261121b; two photos of Angel Eyes with the MiSTer OSD open): Original
+  "MiSTer Gen." as before; switched to RT4K DV1 while running, "MiSTer (240p)" but **cut even more**.  Measured against MAME's frame of
+  the same screen (`capture.py tkdensho 1200-9000/150`: the score ranking, frames 5250-5700; INSERT COIN at rows 6-13, columns 18-302):
+  the RT4K showed game columns ~21-279, a window of ~4,160 clocks -- **320 of the Original's 13-clock dots**, and the top ~4 lines
+  missing as the Original's vertical offset would put it.  The RT4K was still using the Original's DV1 infoframe: test build
+  20261121c (below).
+- Eighth hardware test (the owner, 2026-11-21, test build 20261121c): **RT4K DV1 "works perfect"** on the RT4K -- the whole picture,
+  "MiSTer (240p)" -- but **a CRT on the analog output loses sync** with it (its 4-dot, 0.67 us hsync).  Original: on the CRT as the
+  release; on the RT4K "MiSTer Gen." and the right side cut, as before (expected: the Original is the release's raster).
+- Ninth hardware test (the owner, 2026-11-21, test build 20261121d: RT4K DV1 with a 4.7 us hsync): **the RT4K picture whole and the
+  CRT keeps its sync**, on the same setting.  So the RT4K centres its crop between the hsyncs ("The RetroTINK 4K").
+
+### The RetroTINK 4K
+
+**Its class.**  The RT4K sorts a MiSTer direct-video signal by its **lines per frame**.  What the owner's RT4K (firmware 1.87.3) said
+of the owner's other cores, from their notes in `C:
+epos` (hvyunit-mister `docs/ARCHITECTURE.md`, fghthist-mister and seta2-mister
+`PLAN.md`), and (marked *) from a report the owner's Polygonet session sent on 2026-11-21 about its Hexion, Aquarium and Polygonet
+work (those repositories are not on this machine):
+
+| Lines | Class | Cores |
+|---|---|---|
+| 261, 262, 263*, 264 | MiSTer 240p | jchan-mister 460 x 261; seta2-mister 262 (Guardians, Penguin Brothers since their fix), 261 (Gundam EX); Aquarium / Hexion 262-263*; hvyunit-mister 390 x 264, fghthist-mister 449 x 264, Metamorphic Force 264; **this core's 20261121, 462 x 264** |
+| 256, 259, 266*, 267*, 269, 270*, 272, 276*, 282*, 288* | MiSTer Gen. | seta2-mister 256 / 259 (before the fix); Aquarium / Hexion 266-288*; Polygonet 267*; hvyunit-mister and fghthist-mister 269 (their first builds); **this core's Original raster, 448 x 272** |
+
+**Its crop.**  In short (the ninth test): the RT4K centres a crop of the picture's size between two hsyncs, so the picture must sit in
+the middle of the line; and a Video Timing change must toggle `new_vmode`, or the RT4K keeps the old raster's numbers.  In DV1 MiSTer tells the RT4K (Main_MiSTer `video.cpp`, `spd_config_update`; the numbers measured by `hps_io.sv`) the
+pixel repeat (clocks between dots), `de_h` (clocks from the hsync's end to the first picture dot), `de_v` (lines from the vsync's end
+to the first picture line) and the picture's size; the RT4K decimates and crops by them (its "auto-decimate / auto-crop" for MiSTer,
+firmware 1.1.0).  Two things went wrong:
+* **A stale infoframe.**  Main_MiSTer re-reads these numbers only when `hps_io`'s `vid_nres` changes, which it does when the picture's
+  size changes or the core toggles `new_vmode`.  Both Video Timings are 320 x 240 and the core did not drive `new_vmode`, so after a
+  switch while running the RT4K kept the Original's numbers: decimating the RT4K raster's 16-clock dots by 13 it took 320 x 13 clocks,
+  260 of the picture's dots -- the seventh test's "cut even more".  Fixed in 20261121c: `new_vmode` is the Video Timing bit.
+* **The Original's right side** (the fifth and sixth tests, fresh numbers): cut by about the hsync's width (32 dots).  The stale crop of
+  the seventh test started ~1,260 clocks after the hsync's **start** where the Original's `de_h` is 1,256 clocks from its **end**, so
+  the RT4K looks to count the offset from the start (or to centre a 320-dot crop between the hsyncs: within the photo's precision the
+  two agree).  Either way the Original's picture comes out about 32 dots right of the crop.  The RT4K raster is made so that both
+  readings land on the picture: a 4-dot hsync (an offset error of 4 dots at most) and the picture centred in direct video's DE
+  (`sys_top.v`: DE is low during the hsync and the 4 dots after it), back porch 602 clocks, front porch 544.  The Original is not
+  changed (it is the CRT's raster; an RT4K owner chooses RT4K DV1).
+* The width: in the Polygonet session's report* Aquarium's and Hexion's pictures at 63-67 % of the line came out narrow, at 79-84 %
+  a good 4:3; with the crop taken from the infoframe that may have been the same stale-number effect.  The RT4K raster's picture is
+  80.9 % of its line either way.
+* 20261121c, fresh numbers, a 4-dot hsync and the picture centred between the hsyncs: the whole picture (the eighth test).  That fits
+  all three readings -- the offset counted from the hsync's start, a crop centred between the hsyncs, and the offset counted from the
+  hsync's end as MiSTer measures it -- so it does not tell them apart.  Read again at 8x against MAME's frame, the seventh test's
+  stale crop runs from inside INSERT's N (column ~26) to inside COIN's C (~276), centred within 1-4 columns of both of the first two
+  readings: no decision either.  A normal 4.7 us hsync would suit a CRT; it keeps the RT4K's crop on the picture only if the RT4K does
+  not count from the hsync's start (a test on the RT4K would tell).
+* 20261121d (the owner: try it): the RT4K raster with a 4.7 us hsync, the picture still centred between the hsyncs (346 clocks of
+  direct video's DE before it, 352 after): **whole on the RT4K, and a CRT holds it** (the ninth test).  Counting from the hsync's start
+  would have cut ~28 dots; so the RT4K does not.  Counting from the hsync's end as MiSTer measures it would not have cut the Original.
+  What fits every test: **the RT4K centres a crop of the picture's size (320 x the pixel repeat) in direct video's DE**, from 4 dots
+  after an hsync to the next hsync -- the Original's picture sits 34 dots right of that centre (cut on the right), the seventh test's
+  stale crop centred at column ~151-155 where the RT4K raster's DE centre is column 155.  For any core on the RT4K: put the picture in
+  the middle of that span.
+
+**The RT4K DV1 raster** (OSD Video Timing, `rtl/ts_cen.sv`): 264 lines (the RT4K's "240p", tested on this core), 395 dots of 16 clocks
+(6 MHz) after a 10-clock gap: 6,330 clocks a line, 57.4465 Hz (MAME 57.4458 Hz; the 68000 gets 278,520 clocks a frame against MAME's
+278,523, the Original raster 278,528); picture dots 0-319, front porch 22 dots (3.7 us), hsync 342-369 (4.7 us), back porch 25 dots and
+the gap (4.3 us; in 20261121c: front porch 34, hsync 354-357, back porch 37); vsync
+lines 244-246, 17 blank lines between it and the picture.  Every line is the same (the RT4K's picture shakes otherwise: jchan-mister).
+The Original raster stays the first release's, clock for clock (`sim/run_raster.sh`: the new `ts_cen` / `ts_video` against the
+release's, 0 of 5,018,504 clocks differ over three frames, the CPUs' enables included), so the CRT picture is as it was.  The raster
+changes at the start of a frame (the bench: frames of 272 and 264 lines with every line 6,144 or 6,330 clocks, one line of the
+switch's frame longer or shorter as the hsync moves); the standby raster (the loading screen) follows it.  CRT Adjust is held off and
+greyed out with the RT4K raster: its module and its bias are set up for the Original one.
+
+**What the RT4K raster's shorter vertical blank costs.**  The blank is 24 lines of 65.94 us (1.58 ms) against the Original's 32 of 64 us
+(2.05 ms).  The core
+draws each line from the live tilemaps and scroll registers one line ahead and looks the palettes up as the dots go out, so the top line
+takes the tilemaps 1.52 ms (was 1.98 ms) and the palettes 1.58 ms (was 2.05 ms) after the 68000's interrupt; MAME draws the whole
+picture 3 ms after it (`VIDEO_UPDATE_AFTER_VBLANK` with a 3,000 us vblank).  `tools/lua/vbltime.lua` (MAME 0.289, 12,000 frames of each
+game: attract, a coin and a start every 1,800 frames, random play from frame 1,700, seed 21) times every write that changes a word:
+the scroll registers change only within 0.5 ms of the interrupt, but both games write tilemaps and palettes all through the frame.
+Frames 1,000-12,000 in which the core's top lines can miss a write that MAME's picture has (an upper bound: a tile write counts even
+when its tile is not on those lines):
+
+| Game | What | Original: frames, most lines | RT4K DV1: frames, most lines |
+|---|---|---|---|
+| Deroon | tilemaps | 23, 16 | 135, 23 |
+| Deroon | palettes | 5, 5 | 5, 12 |
+| Angel Eyes | tilemaps | 206, 16 | 227, 23 |
+| Angel Eyes | palettes | 15, 15 | 129, 22 |
+
+With the RT4K raster a change shows one frame late on the top lines in about 1 % of the frames (mostly scene changes), where the
+Original raster has it in up to 2 %.  The board itself draws from live memory as the core does; its real blank is unknown, so neither
+raster is known to be the board's.  (The table was computed for 20261121's 264-line raster, whose lines and blank are the RT4K raster's
+but whose first dot came 314 clocks later in the line: the times differ by 3 us.)
 
 ## Build
 
 **Names**: the first release, 20261118 (2026-11-19), is test build 20261118c renamed (the same RBF, SHA-256 1586ebce...5e7f44).  The
 owner's test builds 20261117, 20261118 and 20261118b were never published; this document keeps their names for the history, and their
 RBFs and reports moved out of `releases/` to `work/old_releases/` (outside the repository).  The release notes and the README describe
-the release alone.
+the release alone.  The second release, **20261121d** (2026-11-21), is test build 20261121d (the same RBF, SHA-256 f2ab930b...1a72e68):
+the OSD's Video Timing; its name keeps the test build's letter because the owner's SD card had a different test build called
+20261121.  Its test builds 20261121, 20261121b and 20261121c are in `work/old_releases/`.  `releases/` holds the two releases;
+`dist/TecmoSys_MiSTer_20261121d.zip` (SHA-256 595a838a...a07f98) and `dist/RELEASE_NOTES_20261121d.md` (with "What's new since
+20261118") the latest.
+
+**Test build 20261121** (2026-11-21, not released; its RBF moved to `work/old_releases/`): the one raster changed to 462 x 264 (13-clock
+dots, the line 3 % longer).  The owner's test: "MiSTer (240p)" on the RT4K, but a narrower CRT picture and the right side still cut on
+the RT4K ("Controls and the hardware tests").
+
+**Test build 20261121b** (2026-11-21, not released; its RBF moved to `work/old_releases/`): the OSD's **Video Timing**, Original (the
+release's raster, clock for clock) and RT4K DV1 (395 x 264, 6 MHz dots, then with a 4.7 us hsync and a 5.1 us back porch), nothing
+else.  The owner's test: "MiSTer (240p)" but cut more (the stale DV1 infoframe: "The RetroTINK 4K").  `tecmosys_20261121b.rbf` (SHA-256 64065c23...96d639):
+20,582 ALMs (49 %), 329 / 553 RAM blocks, 59 DSP; every RAM as deep as declared; timing met in all four models (0 negative slacks of
+156; worst setup +0.208 ns slow -40 C, worst hold +0.095 ns fast -40 C).  Checked: `sim/run_raster.sh` (the Original raster against
+the release's modules: 0 of 5,018,504 clocks differ; both rasters' shapes and the switch at a frame's start, the standby raster
+alike); the frozen-state video bench (`tools/bench_video.py --rt4k`) in the RT4K raster 18 / 18 frames pixel-identical to MAME
+(deroon 6 attract + 2 README, tkdensho 4 attract + 4 play + 2 README; lines take <= 1,462 of 6,330 clocks), in the Original 3 / 3.
+The whole-machine bench ran 20261121's 264-line raster (the RT4K raster's lines, line length and blank; its first dot 3 us later in the
+line): see "Whole machine".
+
+**Test build 20261121c** (2026-11-21, not released; its RBF moved to `work/old_releases/`; the owner's test: RT4K DV1 whole and "240p",
+a CRT loses its 0.67 us hsync): 20261121b plus `new_vmode` (a Video Timing change makes Main_MiSTer resend the
+DV1 infoframe) and the RT4K raster's horizontal timing for the RT4K's crop (a 4-dot hsync, the picture centred between the hsyncs);
+the Original raster unchanged (`sim/run_raster.sh`: 0 of 5,018,504 clocks differ).  The frozen-state bench in the RT4K raster: 3 / 3
+frames pixel-identical (the hsync is the only change in it).  `tecmosys_20261121c.rbf` (SHA-256
+fb6da05e...15f271e): 20,672 ALMs (49 %), 329 / 553 RAM blocks, 59 DSP; every RAM as deep as declared; timing met in all four models
+(0 negative slacks of 156; worst setup +0.281 ns slow -40 C, worst hold +0.078 ns fast -40 C) with **fitter seed 3** (`TecmoSys.qsf`
+SEED 3 since this build): seed 1 missed the 96 MHz clock by 0.021 ns (the SDRAM's read register to the sprite renderer's buffer),
+seed 2 the framework's HDMI clock by 0.121 ns at -40 C; placement luck, not this build's logic (20261121b met both at seed 1).
+
+**Test build 20261121d** (2026-11-21, released as **20261121d**; the owner's test: RT4K whole and "240p", the CRT in sync): 20261121c with the RT4K raster's hsync a CRT's 4.7 us (dots 342-369), the picture
+still centred between the hsyncs ("The RetroTINK 4K"); nothing else.  `sim/run_raster.sh`: the Original 0 of 5,018,504 clocks from the
+release's, the RT4K raster as designed (picture 858 clocks after the hsync's rise, 346 / 352 clocks of DE around it); the frozen-state
+bench in the RT4K raster pixel-identical.  `releases/tecmosys_20261121d.rbf` (SHA-256 f2ab930b...1a72e68): 20,545 ALMs (49 %), 329 / 553
+RAM blocks, 59 DSP; every RAM as deep as declared; timing met in all four models at seed 3 (0 negative slacks of 156; worst setup
++0.009 ns slow 100 C, worst hold +0.079 ns fast -40 C).
 
 `releases/tecmosys_20261118.rbf` (Quartus 17.0.2 Lite, seed 1, jchan-mister's settings, ~20 min; `tools/release.py`): **20,681 ALMs (49 %),
 329 / 553 RAM blocks (59 %), 59 / 112 DSP, 3 PLLs**; `tools/check_ram_depth.py`: every RAM as deep as declared; timing met in all four
-models for every check (`quartus_sta --multicorner=on`; the release script found 0 negative slacks of 78).  The tightest setup is the
+models for every check (`quartus_sta --multicorner=on`; 0 negative slacks of 156.  The release script counted 78: its pattern
+skipped the two -40 C models' names, fixed 2026-11-21; re-read, all 156 are positive).  The tightest setup is the
 framework's HDMI clock; the core's 96 MHz has +0.358 ns:
 
 | Model | Setup | Hold | Recovery | Removal |

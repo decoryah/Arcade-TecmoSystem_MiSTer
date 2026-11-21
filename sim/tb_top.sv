@@ -64,9 +64,15 @@ module tb_top #(
     wire [15:0]  trom_data, srom_data;
     wire core_rst = reset | ~mem_ready;
 
+    // +VMODE=1: the RT4K DV1 raster (ts_cen.sv)
+    logic vmode = 1'b0;
+    initial begin : vm
+        integer v;
+        if ($value$plusargs("VMODE=%d", v)) vmode = (v != 0);
+    end
     ts_core #(.SIM_GATE(SIM_GATE), .WDOG_FRAMES(WDOG_FRAMES)) u_core (
         .clk(clk), .rst(core_rst), .clk_opl(clk_opl),
-        .game(game), .slots(slots),
+        .game(game), .slots(slots), .vmode(vmode),
         .mrom_req(mrom_req), .mrom_addr(mrom_addr), .mrom_ack(mrom_ack), .mrom_data(mrom_data),
         .zrom_req(zrom_req), .zrom_addr(zrom_addr), .zrom_ack(zrom_ack), .zrom_data(zrom_data),
         .ymz_req(ymz_req), .ymz_addr(ymz_addr), .ymz_ack(ymz_ack), .ymz_data(ymz_data),
@@ -186,7 +192,7 @@ module tb_top #(
         else begin if (s_run > s_max) s_max <= s_run; s_run <= 0; end
         if (u_core.u_video.draw && (u_core.u_video.t_busy || u_core.u_video.s_busy)) n_late <= n_late + 1;
     end
-    final $display("line render: tiles longest %0d clocks, sprites longest %0d clocks (budget 6144), late lines %0d", t_max, s_max, n_late);
+    final $display("line render: tiles longest %0d clocks, sprites longest %0d clocks (budget 6144, RT4K DV1 6330), late lines %0d", t_max, s_max, n_late);
 
     // ---------------------------------------------------------------- the sample chips' ROM reads in time
     // YMZ280B: a sample tick while the previous sample is still being made (ts_ymz280b's `overrun` condition, counted).

@@ -47,7 +47,7 @@ def main(argv):
     fit = kv(stem + '.fit.summary')
     worst, cur = {}, None
     for line in open(stem + '.sta.summary', errors='replace'):
-        m = re.match(r"Type\s*:\s*(\w[\w ]*?) '(.*)'", line)
+        m = re.match(r"Type\s*:\s*(.+?) '(.*)'", line)            # (the model names have '-40C' in them)
         if m:
             cur = (m.group(1), m.group(2))
         m = re.match(r'Slack\s*:\s*(-?[\d.]+)', line)

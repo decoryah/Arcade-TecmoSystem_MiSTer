@@ -63,6 +63,9 @@ always @* case (status[34:32])
 	default: scale_sel = 3'd0;   // Normal
 endcase
 wire  [1:0] ar         = status[122:121];
+// Video Timing (rtl/ts_cen.sv, ts_pixgen): 0 Original (the board's 7 MHz dots, 448 x 272, 15.625 kHz), 1 RT4K DV1 (6 MHz dots, 395 x 264,
+// 15.166 kHz: what a RetroTINK 4K on direct video takes as "MiSTer (240p)" and shows whole and 4:3).  Both 57.44 Hz; taken at a frame's start.
+wire        vt_rt4k    = status[40];
 wire        fs_int     = (ar == 2'd1) && (scale_sel != 3'd0) && (HDMI_WIDTH != 12'd0) && (HDMI_HEIGHT != 12'd0);
 wire [11:0] arx        = fs_int ? HDMI_WIDTH  : (!ar) ? 12'd4 : (ar - 1'd1);
 wire [11:0] ary        = fs_int ? HDMI_HEIGHT : (!ar) ? 12'd3 : 12'd0;
@@ -74,8 +77,9 @@ localparam CONF_STR = {
 	"O[122:121],Aspect ratio,Original,Full Screen,[ARC1],[ARC2];",
 	"O[34:32],Scale,Normal,V-Integer,HV-Integer,Narrower HV-Integer,HV-Integer+;",
 	"O[5:3],Scandoubler Fx,None,HQ2x,CRT 25%,CRT 50%,CRT 75%;",
-	"P1,CRT Adjust;",
-	"P1O[14],CRT Adjust,Off,On;",
+	"O[40],Video Timing,Original,RT4K DV1;",
+	"D2P1,CRT Adjust;",
+	"D2P1O[14],CRT Adjust,Off,On;",
 	"H1P1O[19:15],CRT H-Size,0,+1,+2,+3,+4,+5,+6,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1;",
 	"H1P1O[27:21],CRT H-Position,0,+1,+2,+3,+4,+5,+6,+7,+8,+9,+10,+11,+12,+13,+14,+15,+16,+17,+18,+19,+20,-48,-47,-46,-45,-44,-43,-42,-41,-40,-39,-38,-37,-36,-35,-34,-33,-32,-31,-30,-29,-28,-27,-26,-25,-24,-23,-22,-21,-20,-19,-18,-17,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1;",
 	"H1P1O[39:35],CRT V-Shift,0,+1,+2,+3,+4,+5,+6,+7,+8,+9,+10,+11,+12,+13,+14,+15,-16,-15,-14,-13,-12,-11,-10,-9,-8,-7,-6,-5,-4,-3,-2,-1;",
@@ -133,7 +137,11 @@ hps_io #(.CONF_STR(CONF_STR)) hps_io
 
 	.buttons(buttons),
 	.status(status),
-	.status_menumask({14'd0, ~status[14], direct_video}),       // bit 1: the CRT Adjust values are hidden while it is Off
+	.new_vmode(vt_rt4k),                                          // a Video Timing change makes Main_MiSTer re-read the video and resend
+	                                                               // direct video's DV1 infoframe (both rasters are 320 x 240, which alone
+	                                                               // does not count as a change: the RT4K kept the old one's pixel repeat)
+	.status_menumask({13'd0, vt_rt4k, ~status[14], direct_video}), // bit 1: the CRT Adjust values are hidden while it is Off; bit 2: it is
+	                                                               // greyed out with the RT4K DV1 timing (set up for the Original raster)
 	.forced_scandoubler(forced_scandoubler),
 	.direct_video(direct_video),
 	.gamma_bus(gamma_bus),
@@ -291,7 +299,7 @@ wire  [7:0]  o_r, o_g, o_b;
 ts_core u_core
 (
 	.clk(clk_sys), .rst(core_rst_r), .clk_opl(clk_opl),
-	.game(game), .slots(slots),
+	.game(game), .slots(slots), .vmode(vt_rt4k),
 	.mrom_req(mrom_req), .mrom_addr(mrom_addr), .mrom_ack(mrom_ack), .mrom_data(mrom_data),
 	.zrom_req(zrom_req), .zrom_addr(zrom_addr), .zrom_ack(zrom_ack), .zrom_data(zrom_data),
 	.ymz_req(ymz_req), .ymz_addr(ymz_addr), .ymz_ack(ymz_ack), .ymz_data(ymz_data),
@@ -374,7 +382,7 @@ assign AUDIO_R = snd_r;
 // while the machine is held (the image streaming in, the OSD's Reset) its raster does not run: a blank one of the same timing keeps the
 // framework's OSD (its "Loading" pop-up) alive (rtl/ts_standby.sv)
 wire        sb_ce, sb_hblank, sb_vblank, sb_hs, sb_vs;
-ts_standby u_standby (.clk(clk_sys), .o_ce(sb_ce), .o_hblank(sb_hblank), .o_vblank(sb_vblank), .o_hs(sb_hs), .o_vs(sb_vs));
+ts_standby u_standby (.clk(clk_sys), .vmode_req(vt_rt4k), .o_ce(sb_ce), .o_hblank(sb_hblank), .o_vblank(sb_vblank), .o_hs(sb_hs), .o_vs(sb_vs));
 reg         sb_on = 1'b1;
 always @(posedge clk_sys) sb_on <= core_rst_r;
 
@@ -392,7 +400,8 @@ always @(posedge clk_sys) begin
 	vq_vbn <= (o_y >= 9'd239) && (o_y <= 9'd270);
 end
 
-// CRT Adjust (rmonic79's MiSTer-CRT-Adjust, modules/crt_adjust), set up as in the owner's jchan-mister for this raster: 448 dots of 13 clocks
+// CRT Adjust (rmonic79's MiSTer-CRT-Adjust, modules/crt_adjust), set up as in the owner's jchan-mister for the Original raster (held off with
+// the RT4K DV1 timing, whose analog picture is not meant for a CRT's adjustments): 448 dots of 13 clocks
 // in a 6144-clock line (320 idle clocks = 24.6 dots in front of the first dot: CRT_HBIAS = 25 - 1), 272 lines.  The bias is computed, not
 // measured on a bench yet (docs/status.md).
 localparam signed [8:0] CRT_HBIAS = 9'sd24;
@@ -407,7 +416,7 @@ reg signed  [4:0] crt_hsize;
 reg signed  [8:0] crt_hoff;
 reg signed  [5:0] crt_voff;
 always @(posedge clk_sys) if (vq_ce) begin
-	crt_on    <= status[14] & ~crt_sd & ~sb_on;
+	crt_on    <= status[14] & ~crt_sd & ~sb_on & ~vt_rt4k;
 	crt_hsize <= crt_hsz[4:0];
 	crt_hoff  <= crt_hpos + CRT_HBIAS;
 	crt_voff  <= crt_vs_t[5:0];

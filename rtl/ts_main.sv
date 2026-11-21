@@ -44,7 +44,7 @@ module ts_main #(
 
     // raster
     input  wire         ev_vbl,                 // one clock: the vertical blank starts (line 240)
-    input  wire         vblank,                 // level: the raster is in lines 240..271
+    input  wire         vblank,                 // level: the raster is in lines 240 to the last (271, RT4K DV1 263)
 
     // inputs (MAME's port values, active low)
     input  wire [15:0]  in_p1,

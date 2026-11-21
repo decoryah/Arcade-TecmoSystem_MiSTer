@@ -35,7 +35,9 @@ draws each of the four game pictures identically to MAME (`tools/bench_video.py`
 ## Status
 
 **Tested on a real MiSTer** by the repository owner: both games run, with the buttons named per game; Start 1P+2P lets one player
-leave Angel Eyes' I/O check; the sound checked by ear (Deroon's coin sound clean).
+leave Angel Eyes' I/O check; the sound checked by ear (Deroon's coin sound clean). On a RetroTINK 4K (direct video), the RT4K DV1
+Video Timing gives the whole picture as "MiSTer (240p)", and a 15 kHz CRT on the analog output holds the same signal; with the Original
+timing the RT4K says "MiSTer Gen." and cuts the right side.
 
 What was checked besides, in simulation and in the Quartus tool flow, against MAME 0.289 (details and numbers in `docs/status.md`):
 
@@ -106,7 +108,10 @@ with its EXIT line. Angel Eyes' I/O check exits with Start 1P+2P, and Deroon's w
 ## OSD
 
 * **Aspect ratio**, **Scale** (Normal, V-Integer, HV-Integer, Narrower HV-Integer, HV-Integer+), **Scandoubler Fx**.
-* **CRT Adjust** (H-Size, H-Position, V-Shift) for the 15 kHz output, rmonic79's module.
+* **Video Timing**: **Original** (the default: the board's 7 MHz dots, for a CRT and MiSTer's HDMI scaler) or **RT4K DV1** (for a
+  RetroTINK 4K on MiSTer's direct video: it takes the signal as "MiSTer (240p)" and shows the whole picture at 4:3; a CRT holds it
+  too, with a wider picture than the Original's). See Timing.
+* **CRT Adjust** (H-Size, H-Position, V-Shift) for the 15 kHz output, rmonic79's module; greyed out with the RT4K DV1 timing.
 * **Volume**: Normal (about MAME 0.289's loudness), -6 dB, -12 dB, +6 dB.
 * **SDRAM read capture**: Normal, Late (for SDRAM modules that need the later read point).
 * **Service Mode**: the board's test switch (above).
@@ -115,9 +120,23 @@ with its EXIT line. Angel Eyes' I/O check exits with Start 1P+2P, and Deroon's w
 ## Timing
 
 96 MHz machine clock: 68000 16 MHz, Z80 8 MHz, OKI 2 MHz, dots 7 MHz (28 MHz / 4); the YMZ280B at 16.9344 MHz as a fractional
-enable; the YMF262 on its own 24 MHz clock with the exact 14.31818 MHz / 288 sample rate (49.716 kHz). The raster: 448 x 272 total,
-320 x 240 visible, 15.625 kHz, 57.445 Hz (MAME: 57.446 Hz on a placeholder 512 x 512 raster; the board's totals are not documented).
-The sprites are drawn one frame behind the tilemaps, as MAME draws them.
+enable; the YMF262 on its own 24 MHz clock with the exact 14.31818 MHz / 288 sample rate (49.716 kHz). The sprites are drawn one
+frame behind the tilemaps, as MAME draws them.
+
+The picture is 320 x 240 in both Video Timings (MAME 0.289: 57.4458 Hz on a placeholder 512 x 512 raster; the board's totals are not
+documented):
+
+| Video Timing | Dots | Raster | Line | Frame | For |
+|---|---|---|---|---|---|
+| Original (default) | 7 MHz, the board's | 448 x 272 | 15.625 kHz | 57.4449 Hz | a 15 kHz CRT and MiSTer's HDMI scaler |
+| RT4K DV1 | 6 MHz | 395 x 264 | 15.166 kHz | 57.4465 Hz | a RetroTINK 4K on MiSTer's direct video (a CRT holds it too) |
+
+A RetroTINK 4K sorts a direct-video signal by its lines per frame: 264 lines is "MiSTer (240p)", like the other MiSTer arcade cores;
+272 is "MiSTer Gen.", in which it squashes the picture while the MiSTer menu is open. It crops a picture of the size MiSTer tells it
+(direct video's DV1 infoframe) from the middle of the line between two hsyncs, so the Original's picture, which sits late in the line,
+loses its right side. The RT4K DV1 timing puts the picture in the middle, with a normal 4.7 us hsync, and the picture fills 81 % of the
+line. A change of Video Timing takes place at the start of a frame (the display may re-sync) and makes MiSTer send the RT4K the new
+raster's numbers. Details: `docs/status.md`, "The RetroTINK 4K".
 
 ## Build
 

@@ -59,15 +59,22 @@ module tb_video (
         spr_q <= spr[spr_a]; tpal_q <= tpal[tpal_a]; spal_q <= spal[spal_a];
     end
 
-    wire ce_pix;
-    ts_pixgen u_pix (.clk(clk), .rst(reset), .ce_pix(ce_pix), .line_start());
-
+    // +VMODE=1: the RT4K DV1 raster (ts_cen.sv); the dots restart with the video, as the core's do with the machine's reset
+    logic vmode_req = 1'b0;
+    initial begin : vm
+        integer v;
+        if ($value$plusargs("VMODE=%d", v)) vmode_req = (v != 0);
+    end
     wire trom_req, trom_ack, trom_valid, srom_req, srom_ack, srom_valid, mem_ready;
+    wire ce_pix, pix_first, pix_frame, vmode;
+    ts_pixgen u_pix (.clk(clk), .rst(reset | ~mem_ready), .mode_req(vmode_req), .ce_pix(ce_pix), .first(pix_first), .frame(pix_frame),
+        .mode(vmode), .line_start());
+
     wire [24:0] trom_addr, srom_addr;
     wire [6:0]  trom_len, srom_len;
     wire [15:0] trom_data, srom_data;
     ts_video u_video (
-        .clk(clk), .rst(reset | ~mem_ready), .ce_pix(ce_pix),
+        .clk(clk), .rst(reset | ~mem_ready), .ce_pix(ce_pix), .pix_first(pix_first), .pix_frame(pix_frame), .vmode(vmode),
         .tx_addr(tx_a), .tx_data(tx_q), .bg1_addr(bg1_a), .bg1_data(bg1_q), .bg2_addr(bg2_a), .bg2_data(bg2_q),
         .bg3_addr(bg3_a), .bg3_data(bg3_q), .spr_addr(spr_a), .spr_data(spr_q),
         .tpal_addr(tpal_a), .tpal_data(tpal_q), .spal_addr(spal_a), .spal_data(spal_q),
@@ -107,6 +114,6 @@ module tb_video (
         if (u_video.t_busy) t_run <= t_run + 1; else begin if (t_run > t_max) t_max <= t_run; t_run <= 0; end
         if (u_video.s_busy) s_run <= s_run + 1; else begin if (s_run > s_max) s_max <= s_run; s_run <= 0; end
     end
-    final $display("line render: tiles longest %0d clocks, sprites longest %0d clocks (budget 6144)", t_max, s_max);
+    final $display("line render: tiles longest %0d clocks, sprites longest %0d clocks (budget 6144, RT4K DV1 6330)", t_max, s_max);
 endmodule
 `default_nettype wire

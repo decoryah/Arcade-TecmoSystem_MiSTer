@@ -1,12 +1,14 @@
 // The Tecmo System video: raster, the tilemap and sprite line renderers (ts_tiles, ts_sprites) a line ahead of the display, and the final mix
 // of MAME 0.289 tecmosys_v.cpp (do_final_mix) with the two palettes.
 //
-// Raster: 7 MHz dots (28 MHz / 4), 448 dots x 272 lines (15.625 kHz, 57.44 Hz: MAME's 57.4458 Hz screen), the picture is dots 0-319 of lines
-// 0-239 (MAME's visible area).  The vertical blank is lines 240-271: its start is the 68000's interrupt and the moment the sprite list is taken
-// (ev_vbl); 880000 reads 0 during it (`vblank`).  Sync positions are this core's choice (the board's are not documented): hsync dots 344-375,
-// vsync lines 248-250.
+// Raster: the OSD's Video Timing (ts_cen.sv, ts_pixgen: the dots and the frame's mode come from there).  The picture is dots 0-319 of lines
+// 0-239 (MAME's visible area) in both; the vertical blank (lines 240 to the last) starts with the 68000's interrupt and the moment the sprite
+// list is taken (ev_vbl); 880000 reads 0 during it (`vblank`).  Sync positions are this core's choice (the board's are not documented):
+//   Original  448 dots x 272 lines (7 MHz dots, 15.625 kHz, 57.4449 Hz: MAME's 57.4458 Hz screen): hsync dots 344-375, vsync lines 248-250
+//   RT4K DV1  395 dots x 264 lines (6 MHz dots, 15.166 kHz, 57.4465 Hz): hsync dots 342-369 (4.7 us), the picture centred between the
+//             hsyncs as direct video's DE sees it (ts_cen.sv says why), vsync lines 244-246
 //
-// Line L is drawn into bank L & 1 of the two line buffers during line L - 1 (line 0 during line 271) and displayed from it during line L:
+// Line L is drawn into bank L & 1 of the two line buffers during line L - 1 (line 0 during the last line) and displayed from it during line L:
 //   compose buffer  {pri[1:0], tilemap palette index[10:0]} of the topmost tilemap pixel (ts_tiles; tilemap 1 writes every pixel)
 //   sprite buffer   {pri[1:0], palette[5:0], pixel[7:0]} (ts_sprites; cleared by the display as it reads it, MAME's per-frame fill(0))
 //
@@ -20,6 +22,9 @@ module ts_video (
     input  wire         clk,
     input  wire         rst,
     input  wire         ce_pix,
+    input  wire         pix_first,              // ts_pixgen: with ce_pix, the first dot of a line
+    input  wire         pix_frame,              // ts_pixgen: with pix_first, the first line of a frame
+    input  wire         vmode,                  // ts_pixgen: the frame's raster (0 Original, 1 RT4K DV1)
 
     // ts_main's memories (port B) and registers
     output wire [12:0]  tx_addr,
@@ -76,6 +81,7 @@ module ts_video (
 );
     // ---------------------------------------------------------------- raster
     logic [8:0] hc = 9'd447, vc = 9'd271;
+    wire  [8:0] vlast = vmode ? 9'd263 : 9'd271;          // the last line of the frame in progress
     logic       line_go;
     always_ff @(posedge clk) begin
         ev_vbl  <= 1'b0;
@@ -83,9 +89,9 @@ module ts_video (
         if (rst) begin
             hc <= 9'd447; vc <= 9'd271;
         end else if (ce_pix) begin
-            if (hc == 9'd447) begin
+            if (pix_first) begin
                 hc <= 9'd0;
-                vc <= (vc == 9'd271) ? 9'd0 : vc + 9'd1;
+                vc <= (pix_frame || vc == vlast) ? 9'd0 : vc + 9'd1;    // (the two agree; vlast only matters if the resets differ)
                 if (vc == 9'd239) ev_vbl <= 1'b1;
                 line_go <= 1'b1;
             end else hc <= hc + 9'd1;
@@ -93,7 +99,7 @@ module ts_video (
     end
     assign vblank = (vc >= 9'd240);
     // the line drawn during this one
-    wire [8:0] nl = (vc == 9'd271) ? 9'd0 : vc + 9'd1;
+    wire [8:0] nl = (vc == vlast) ? 9'd0 : vc + 9'd1;
 
     // ---------------------------------------------------------------- renderers
     wire        t_busy, s_busy, s_ready;
@@ -180,8 +186,8 @@ module ts_video (
             o_y  <= vc;
             o_hb <= !(hc < 9'd320);
             o_vb <= !(vc < 9'd240);
-            o_hs <= (hc >= 9'd344) && (hc < 9'd376);
-            o_vs <= (vc >= 9'd248) && (vc < 9'd251);
+            o_hs <= vmode ? (hc >= 9'd342) && (hc < 9'd370) : (hc >= 9'd344) && (hc < 9'd376);
+            o_vs <= vmode ? (vc >= 9'd244) && (vc < 9'd247) : (vc >= 9'd248) && (vc < 9'd251);
             {o_r, o_g, o_b} <= (hc < 9'd320 && vc < 9'd240) ? px : 24'd0;
         end
     end

@@ -14,6 +14,7 @@ module ts_core #(
     // the ROM image's header (TecmoSys.sv)
     input  wire [1:0]   game,
     input  wire [127:0] slots,
+    input  wire         vmode,                  // the OSD's Video Timing: 0 Original, 1 RT4K DV1 (ts_cen.sv; taken at the next frame)
 
     // 68000 program
     output wire         mrom_req,
@@ -98,9 +99,9 @@ module ts_core #(
     end
     assign wd_rst = wd_req;
 
-    wire cen_phi1, cen_phi2, cen_z80, cen_oki, ce_pix;
-    ts_cen #(.CLK_HZ(CLK_HZ)) u_cen (.clk(clk), .rst(rst_i), .cen_phi1(cen_phi1), .cen_phi2(cen_phi2), .cen_z80(cen_z80), .cen_oki(cen_oki),
-        .ce_pix(ce_pix));
+    wire cen_phi1, cen_phi2, cen_z80, cen_oki, ce_pix, pix_first, pix_frame, vmode_q;
+    ts_cen #(.CLK_HZ(CLK_HZ)) u_cen (.clk(clk), .rst(rst_i), .vmode_req(vmode), .cen_phi1(cen_phi1), .cen_phi2(cen_phi2), .cen_z80(cen_z80),
+        .cen_oki(cen_oki), .ce_pix(ce_pix), .pix_first(pix_first), .pix_frame(pix_frame), .vmode(vmode_q));
 
     wire         ev_vbl, vblank;
     wire         latch_wr, snd_pending;
@@ -129,7 +130,7 @@ module ts_core #(
         .wd_rst(wd_req), .dbg_halted(dbg_halted));
 
     ts_video u_video (
-        .clk(clk), .rst(rst_i), .ce_pix(ce_pix),
+        .clk(clk), .rst(rst_i), .ce_pix(ce_pix), .pix_first(pix_first), .pix_frame(pix_frame), .vmode(vmode_q),
         .tx_addr(tx_addr), .tx_data(tx_data), .bg1_addr(bg1_addr), .bg1_data(bg1_data), .bg2_addr(bg2_addr), .bg2_data(bg2_data),
         .bg3_addr(bg3_addr), .bg3_data(bg3_data), .spr_addr(spr_addr), .spr_data(spr_data),
         .tpal_addr(tpal_addr), .tpal_data(tpal_data), .spal_addr(spal_addr), .spal_data(spal_data),
