@@ -244,7 +244,20 @@ a board owner, the games' own code) before the core departs from MAME; until the
   "MiSTer (240p)" -- but **a CRT on the analog output loses sync** with it (its 4-dot, 0.67 us hsync).  Original: on the CRT as the
   release; on the RT4K "MiSTer Gen." and the right side cut, as before (expected: the Original is the release's raster).
 - Ninth hardware test (the owner, 2026-11-21, test build 20261121d: RT4K DV1 with a 4.7 us hsync): **the RT4K picture whole and the
-  CRT keeps its sync**, on the same setting.  So the RT4K centres its crop between the hsyncs ("The RetroTINK 4K").
+  CRT keeps its sync**, on the same setting.
+- Tenth hardware test (the owner, 2026-11-21, test build 20261121e: the Original's blank dots moved for the RT4K's crop; a photo of
+  Angel Eyes' title on the RT4K): **the Original still cut** (columns 0 to ~301 of 0-319), so its "MiSTer Gen." class crops from the
+  picture's left edge, not centred (reverted).  The owner also saw **Deroon's picture stutter a bit now and then on the RT4K with the
+  Original timing**, which no earlier build did: so the moved blank dots matter to the RT4K in some way (not investigated), one more
+  reason the change is reverted.  MAME's title pictures have no black columns at the edges (`docs/title_*.png`), so the ~18 missing
+  dots are a real cut, not the RT4K trimming a black border.
+- The RT4K's diagnostics for the Original (the owner's photos of its System Status pages, 2026-11-21): "MiSTer Gen. (tkdensho)",
+  input 6144 x 272 with 4,160 x 240 active, direct video's DE 5,676 x 264, and DV1 `320x240p x13, 825, 24`: a `de_h` of 825 where the
+  Original without CRT Adjust has ~1,256 -- the owner's saved **CRT Adjust** was on ("The RetroTINK 4K": its H-Size made the cut).
+- Eleventh hardware test (the owner, 2026-11-21): CRT Adjust reset to 0 and off -- **the Original's picture whole and centred on the
+  RT4K**; but now Angel Eyes shows the same now-and-then stutter as Deroon (with CRT Adjust's uneven dots it had not): the "MiSTer
+  Gen." glitch ("The RetroTINK 4K").  The RT4K DV1 timing's picture (81 % of the line) is too wide on the owner's CRT, so both
+  Video Timings stay: Original for the CRT, RT4K DV1 for the RT4K.
 
 ### The RetroTINK 4K
 
@@ -259,38 +272,46 @@ work (those repositories are not on this machine):
 | 261, 262, 263*, 264 | MiSTer 240p | jchan-mister 460 x 261; seta2-mister 262 (Guardians, Penguin Brothers since their fix), 261 (Gundam EX); Aquarium / Hexion 262-263*; hvyunit-mister 390 x 264, fghthist-mister 449 x 264, Metamorphic Force 264; **this core's 20261121, 462 x 264** |
 | 256, 259, 266*, 267*, 269, 270*, 272, 276*, 282*, 288* | MiSTer Gen. | seta2-mister 256 / 259 (before the fix); Aquarium / Hexion 266-288*; Polygonet 267*; hvyunit-mister and fghthist-mister 269 (their first builds); **this core's Original raster, 448 x 272** |
 
-**Its crop.**  In short (the ninth test): the RT4K centres a crop of the picture's size between two hsyncs, so the picture must sit in
-the middle of the line; and a Video Timing change must toggle `new_vmode`, or the RT4K keeps the old raster's numbers.  In DV1 MiSTer tells the RT4K (Main_MiSTer `video.cpp`, `spd_config_update`; the numbers measured by `hps_io.sv`) the
-pixel repeat (clocks between dots), `de_h` (clocks from the hsync's end to the first picture dot), `de_v` (lines from the vsync's end
-to the first picture line) and the picture's size; the RT4K decimates and crops by them (its "auto-decimate / auto-crop" for MiSTer,
-firmware 1.1.0).  Two things went wrong:
-* **A stale infoframe.**  Main_MiSTer re-reads these numbers only when `hps_io`'s `vid_nres` changes, which it does when the picture's
-  size changes or the core toggles `new_vmode`.  Both Video Timings are 320 x 240 and the core did not drive `new_vmode`, so after a
-  switch while running the RT4K kept the Original's numbers: decimating the RT4K raster's 16-clock dots by 13 it took 320 x 13 clocks,
-  260 of the picture's dots -- the seventh test's "cut even more".  Fixed in 20261121c: `new_vmode` is the Video Timing bit.
-* **The Original's right side** (the fifth and sixth tests, fresh numbers): cut by about the hsync's width (32 dots).  The stale crop of
-  the seventh test started ~1,260 clocks after the hsync's **start** where the Original's `de_h` is 1,256 clocks from its **end**, so
-  the RT4K looks to count the offset from the start (or to centre a 320-dot crop between the hsyncs: within the photo's precision the
-  two agree).  Either way the Original's picture comes out about 32 dots right of the crop.  The RT4K raster is made so that both
-  readings land on the picture: a 4-dot hsync (an offset error of 4 dots at most) and the picture centred in direct video's DE
-  (`sys_top.v`: DE is low during the hsync and the 4 dots after it), back porch 602 clocks, front porch 544.  The Original is not
-  changed (it is the CRT's raster; an RT4K owner chooses RT4K DV1).
+**Its crop** (settled by the eleventh test and the RT4K's own diagnostics).  In DV1 MiSTer tells the RT4K (Main_MiSTer `video.cpp`,
+`spd_config_update`; measured by `hps_io.sv`) the pixel repeat (clocks between dots), `de_h` (clocks from the hsync's end to the
+first picture dot), `de_v` (lines from the vsync's end to the first picture line) and the picture's size, and **the RT4K crops exactly
+that**: from `de_h` after the hsync, `width x pixel repeat` wide (its System Status, page 2, "DV1:" line and the SPD bytes show them;
+for the Original with the owner's settings `320x240p x13, 825, 24`).  So it needs fresh numbers and dots a whole, steady number of
+clocks apart.  What went wrong in the tests, and why:
+* **A stale infoframe** (the seventh test).  Main_MiSTer re-reads the numbers only when `hps_io`'s `vid_nres` changes: on a change of
+  the picture's size or a toggle of `new_vmode`.  Both Video Timings are 320 x 240 and the core did not drive `new_vmode`, so after a
+  switch while running the RT4K kept the Original's (pixel repeat 13, `de_h` 825, `de_v` 24) on the RT4K raster: columns 21-281 and
+  the top 7 lines -- what the photo showed.  Fixed in 20261121c: `new_vmode` is the Video Timing bit.
+* **The Original's cut right side** (every test before the eleventh): the owner had **CRT Adjust** on, with a saved H-Size.  H-Size
+  reads the picture out at 104 + n eighths of a clock a dot (+6: 13.75 clocks), but the pixel repeat MiSTer reports is a whole number
+  (13), so the RT4K's 320 x 13 clocks covered 4,160 / 13.75 = 302 dots -- the ~302 measured in the tenth test.  With CRT Adjust off,
+  the Original is whole on the RT4K (the eleventh test).  CRT Adjust is held off in the RT4K raster, which is why that one was whole.
+* **A wrong reading** kept in this file until the eleventh test: from the stale photo with an assumed `de_h` of 1,256 (the Original
+  without CRT Adjust), the RT4K seemed to centre its crop between the hsyncs; the RT4K raster's centred picture and 20261121e's moved
+  blank dots came from that.  Neither was needed (the centring is harmless; 20261121e is reverted).
+* **"MiSTer Gen." glitches**: with the Original's dots a steady 13 clocks (CRT Adjust off) the RT4K now and then shows a frame squeezed
+  into fine vertical stripes, the next one torn (the owner's videos of Deroon and Angel Eyes; also on the owner's Hexion core in
+  "Gen."), as if its decimation jumped; with the uneven 13.75-clock dots of the owner's CRT Adjust it did not, and the RT4K raster's
+  "MiSTer (240p)" never did.  An RT4K behaviour of its generic class, not a sync of the core's.  The RT4K picks the class by the
+  lines per frame alone, so the Original leaves "Gen." only with 262-264 lines: with its 64 us line the game would run 3 % fast
+  (59.19 Hz), with a longer line the CRT picture would be 3 % narrower.  The owner keeps both Video Timings as they are (2026-11-21):
+  Original for the CRT, RT4K DV1 for the RT4K.  Untried: a DV1 profile on the RT4K for this core (it loads them by the core name
+  MiSTer sends) with a fixed decimation of 13.
 * The width: in the Polygonet session's report* Aquarium's and Hexion's pictures at 63-67 % of the line came out narrow, at 79-84 %
-  a good 4:3; with the crop taken from the infoframe that may have been the same stale-number effect.  The RT4K raster's picture is
-  80.9 % of its line either way.
-* 20261121c, fresh numbers, a 4-dot hsync and the picture centred between the hsyncs: the whole picture (the eighth test).  That fits
-  all three readings -- the offset counted from the hsync's start, a crop centred between the hsyncs, and the offset counted from the
-  hsync's end as MiSTer measures it -- so it does not tell them apart.  Read again at 8x against MAME's frame, the seventh test's
-  stale crop runs from inside INSERT's N (column ~26) to inside COIN's C (~276), centred within 1-4 columns of both of the first two
-  readings: no decision either.  A normal 4.7 us hsync would suit a CRT; it keeps the RT4K's crop on the picture only if the RT4K does
-  not count from the hsync's start (a test on the RT4K would tell).
-* 20261121d (the owner: try it): the RT4K raster with a 4.7 us hsync, the picture still centred between the hsyncs (346 clocks of
-  direct video's DE before it, 352 after): **whole on the RT4K, and a CRT holds it** (the ninth test).  Counting from the hsync's start
-  would have cut ~28 dots; so the RT4K does not.  Counting from the hsync's end as MiSTer measures it would not have cut the Original.
-  What fits every test: **the RT4K centres a crop of the picture's size (320 x the pixel repeat) in direct video's DE**, from 4 dots
-  after an hsync to the next hsync -- the Original's picture sits 34 dots right of that centre (cut on the right), the seventh test's
-  stale crop centred at column ~151-155 where the RT4K raster's DE centre is column 155.  For any core on the RT4K: put the picture in
-  the middle of that span.
+  a good 4:3; the RT4K raster's picture is 80.9 % of its line.
+
+**The Original on the RT4K (test build 20261121e, reverted; built on the wrong "centred crop" reading above).**  The Original's 272
+lines stay "MiSTer Gen." (264 lines would narrow the CRT picture: the sixth test).  Direct video's DE starts at the 5th dot with the hsync low (`sys_top.v`: `dv_de1 <= !{hss, hs}` at
+each ce_pix), which depends on when the blank dots after the hsync come and on nothing a display sees.  20261121e moved the 68 blank
+dots after the hsync (380-447) to just before the next picture, 4 clocks apart: the DE started 306 clocks before the picture instead
+of 1,204, and a model of that DE and of the (wrong) centred crop in `sim/run_raster.sh` (since removed) put the crop 3 clocks into the
+picture, as with the RT4K raster -- with every sync, blank, picture pixel and CPU enable the release's in all 5,018,504 clocks
+compared.  **The owner's tenth test: still cut.**  Measured against MAME's title screen (INSERT COIN at columns 18-105 and 214-302),
+the RT4K showed columns 0 to ~301: the left edge exact, ~18 dots missing on the right -- the crop starts at the picture's left edge
+(the DV1 offset) and is 320 x 13 clocks wide, which the owner's CRT Adjust H-Size (13.75 clocks a dot) made ~302 dots ("Its crop"
+above; found with the RT4K's diagnostics, fixed by turning CRT Adjust off: the eleventh test).  Moving the blank dots could not help,
+and with them the RT4K showed Deroon stuttering now and then; 20261121e was reverted (`ts_pixgen` is 20261121d's again, and so is
+`sim/run_raster.sh`).
 
 **The RT4K DV1 raster** (OSD Video Timing, `rtl/ts_cen.sv`): 264 lines (the RT4K's "240p", tested on this core), 395 dots of 16 clocks
 (6 MHz) after a 10-clock gap: 6,330 clocks a line, 57.4465 Hz (MAME 57.4458 Hz; the 68000 gets 278,520 clocks a frame against MAME's
@@ -367,6 +388,13 @@ release's, the RT4K raster as designed (picture 858 clocks after the hsync's ris
 bench in the RT4K raster pixel-identical.  `releases/tecmosys_20261121d.rbf` (SHA-256 f2ab930b...1a72e68): 20,545 ALMs (49 %), 329 / 553
 RAM blocks, 59 DSP; every RAM as deep as declared; timing met in all four models at seed 3 (0 negative slacks of 156; worst setup
 +0.009 ns slow 100 C, worst hold +0.079 ns fast -40 C).
+
+**Test build 20261121e** (2026-11-21, not released, reverted; its RBF in `work/old_releases/`): release 20261121d plus the Original's
+late blank dots, meant to put the RT4K's crop on the Original's picture ("The RetroTINK 4K": what a CRT sees unchanged, clock for
+clock); the owner's tenth test: still cut, the "MiSTer Gen." class crops from the picture's left edge, and Deroon stuttered now and
+then on the RT4K (Original), which no earlier build did.  `tecmosys_20261121e.rbf` (SHA-256 da862390...03e609da): 20,680 ALMs (49 %), 329 / 553 RAM blocks, 59 DSP; every RAM as deep as
+declared; timing met in all four models at seed 3 (0 negative slacks of 156; worst setup +0.254 ns slow 100 C, worst hold +0.037 ns
+fast -40 C, the framework's 50 MHz clock).  Frozen-state bench: 4 / 4 Original and 1 / 1 RT4K frames pixel-identical; lint clean.
 
 `releases/tecmosys_20261118.rbf` (Quartus 17.0.2 Lite, seed 1, jchan-mister's settings, ~20 min; `tools/release.py`): **20,681 ALMs (49 %),
 329 / 553 RAM blocks (59 %), 59 / 112 DSP, 3 PLLs**; `tools/check_ram_depth.py`: every RAM as deep as declared; timing met in all four

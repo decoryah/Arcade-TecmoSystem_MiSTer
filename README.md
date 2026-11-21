@@ -37,7 +37,7 @@ draws each of the four game pictures identically to MAME (`tools/bench_video.py`
 **Tested on a real MiSTer** by the repository owner: both games run, with the buttons named per game; Start 1P+2P lets one player
 leave Angel Eyes' I/O check; the sound checked by ear (Deroon's coin sound clean). On a RetroTINK 4K (direct video), the RT4K DV1
 Video Timing gives the whole picture as "MiSTer (240p)", and a 15 kHz CRT on the analog output holds the same signal; with the Original
-timing the RT4K says "MiSTer Gen." and cuts the right side.
+timing the RT4K says "MiSTer Gen." (now and then a striped frame) and needs CRT Adjust off.
 
 What was checked besides, in simulation and in the Quartus tool flow, against MAME 0.289 (details and numbers in `docs/status.md`):
 
@@ -132,10 +132,10 @@ documented):
 | RT4K DV1 | 6 MHz | 395 x 264 | 15.166 kHz | 57.4465 Hz | a RetroTINK 4K on MiSTer's direct video (a CRT holds it too) |
 
 A RetroTINK 4K sorts a direct-video signal by its lines per frame: 264 lines is "MiSTer (240p)", like the other MiSTer arcade cores;
-272 is "MiSTer Gen.", in which it squashes the picture while the MiSTer menu is open. It crops a picture of the size MiSTer tells it
-(direct video's DV1 infoframe) from the middle of the line between two hsyncs, so the Original's picture, which sits late in the line,
-loses its right side. The RT4K DV1 timing puts the picture in the middle, with a normal 4.7 us hsync, and the picture fills 81 % of the
-line. A change of Video Timing takes place at the start of a frame (the display may re-sync) and makes MiSTer send the RT4K the new
+272 is "MiSTer Gen.", in which it squashes the picture while the MiSTer menu is open and, now and then, shows a frame squeezed into
+stripes. It crops the picture by the numbers MiSTer sends it (direct video's DV1 infoframe), which need the dots a whole number of
+clocks apart: with CRT Adjust's H-Size (fractional) the RT4K cuts the right side, so keep CRT Adjust off with an RT4K. The RT4K DV1
+timing has a normal 4.7 us hsync, and the picture fills 81 % of the line. A change of Video Timing takes place at the start of a frame (the display may re-sync) and makes MiSTer send the RT4K the new
 raster's numbers. Details: `docs/status.md`, "The RetroTINK 4K".
 
 ## Build

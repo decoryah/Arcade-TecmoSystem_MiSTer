@@ -49,12 +49,12 @@ endmodule
 //           totals are not documented).  The picture is 43.3 us of the 64 us line.
 //   mode 1, RT4K DV1: 16-clock dots (6 MHz), 395 a line after a 10-clock gap; 6330 clocks a line (65.94 us: 15.166 kHz), 264 lines =
 //           57.4465 Hz.  For the RetroTINK 4K on MiSTer's direct video (docs/status.md, "The RetroTINK 4K"): it sorts the signal by its
-//           lines per frame (264 is "MiSTer (240p)", 272 "MiSTer Gen.") and crops the picture from the DV1 infoframe (the pixel repeat,
-//           the offset from the hsync, the size), and it **centres its crop between the hsyncs**: in direct video's DE, from 4 dots after
-//           an hsync to the next one (the owner's tests 2026-11-21: the Original's picture, 17 us after the hsync, came out cut on the
-//           right; 20261121c, a 4-dot hsync, and 20261121d, this 4.7 us one, both with the picture centred, came out whole).  So the
-//           picture sits centred there, and the hsync is a CRT's: a CRT holds this raster too.  (ts_video: picture dots 0-319, front
-//           porch 22 (3.7 us), hsync 342-369 (28 dots, 4.7 us), back porch 25 + the gap (4.3 us).)
+//           lines per frame (264 is "MiSTer (240p)", 272 "MiSTer Gen.") and crops exactly what the DV1 infoframe says (the pixel repeat,
+//           the offset from the hsync's end, the size), so the dots must be a whole, steady number of clocks apart (CRT Adjust is held
+//           off here: its H-Size reads out at fractional spacings) and a change of raster must toggle new_vmode (TecmoSys.sv).  The
+//           picture sits centred between the hsyncs (from an earlier, wrong reading of the RT4K's crop; harmless) and the hsync is a
+//           CRT's: a CRT holds this raster too.  (ts_video: picture dots 0-319, front porch 22 (3.7 us), hsync 342-369 (28 dots,
+//           4.7 us), back porch 25 + the gap (4.3 us).)
 //
 // The line counts are kept here only to take the mode at a frame's start; ts_video / ts_standby count the dots and lines from first / frame.
 module ts_pixgen (
